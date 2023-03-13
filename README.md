@@ -10,7 +10,11 @@ pip install jijmodeling jijzept -U
 ```sh
 python code_with_jijmodeling_graviton.py
 ```
-This command outputs `result.csv`
+This script outputs `result.csv`
 
 ## generate plot
+```sh
+python visualize.py
+```
+This script outputs png file for grpah.
 
