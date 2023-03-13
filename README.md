@@ -3,7 +3,7 @@
 
 ## Install
 ```sh
-pip install jijmodeling jijzept -U
+pip install jijmodeling jijzept numpy pandas pydantic -U
 ```
 
 ## obtain data
