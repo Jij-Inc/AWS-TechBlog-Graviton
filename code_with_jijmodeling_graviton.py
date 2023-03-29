@@ -10,7 +10,7 @@ from itertools import product
 from pydantic import BaseModel
 from pprint import pprint
 
-# create JijModeling object
+# create JijModeling object here
 problem = jm.Problem("test")
 
 # define variables
@@ -28,6 +28,7 @@ problem += jm.Constraint("one-city", x[:, t] == 1, forall=t)
 problem += jm.Constraint("one-time", x[i, :] == 1, forall=i)
 
 # generate 2d positions
+
 city_range = 10
 num_reads = 100
 sa_one_city_multiplier = {20: 5, 40: 5}
@@ -37,7 +38,8 @@ sqa_one_time_multiplier = {20: 5, 40: 5}
 
 N_cities_list = [40]
 trotter_sizes = [10, 20, 30, 40, 60]
-num_sweepss = [1000, 2000, 4000, 6000, 10000, 20000]
+num_sweepss_sa = [1000, 2000, 4000, 6000, 10000]
+num_sweepss = [100, 200, 400, 600, 1000]
 
 
 class Data(BaseModel):
@@ -46,7 +48,10 @@ class Data(BaseModel):
     num_sweeps: list[int]
     trotter_size: list[int]
     sample_no: list[int]
-    objective: list[float]
+    objective_mean: list[float]
+    objective_std: list[float]
+    objective_min: list[float]
+    objective_max: list[float]
     sampling_time: list[float]
 
 
@@ -56,9 +61,14 @@ data_obj = Data(
     num_sweeps=[],
     trotter_size=[],
     sample_no=[],
-    objective=[],
+    objective_mean=[],
+    objective_std=[],
+    objective_min=[],
+    objective_max=[],
     sampling_time=[],
 )
+
+#np.random.seed(0x123456)
 
 for N_cities in N_cities_list:
     pprint(f"N_cities: {N_cities}")
@@ -75,10 +85,9 @@ for N_cities in N_cities_list:
     benchmark_device = "SA"
     pprint(f"benchmark_device: {benchmark_device}")
 
-    for num_sweeps in num_sweepss:
+    for num_sweeps in num_sweepss_sa:
         pprint(f"num_sweeps: {num_sweeps}")
-        # calculate SA algorithm
-        # You need to specify JijZept credit toml file
+        # calculate SA
         sampler = JijSASampler(config="config_prod.toml")
         response_orig: jm.SampleSet = sampler.sample_model(
             problem,
@@ -90,10 +99,15 @@ for N_cities in N_cities_list:
             num_reads=num_reads,
             num_sweeps=num_sweeps,
         )
-        response = response_orig.feasible().lowest()
+        response = response_orig.feasible()
         assert len(response.evaluation.objective) != 0
+        pprint(f"feasibles={len(response.evaluation.objective)}")
         calc_time = response_orig.get_backend_calculation_time()
         sa_objective = list(response.evaluation.objective)
+        print(np.mean(sa_objective))
+        print(np.std(sa_objective))
+        print(np.min(sa_objective))
+        print(np.max(sa_objective))
         sa_calc_time = [
             calc_time["parameter_search"]["iteration"]["0"]["sample[0]"] / num_reads
         ] * num_reads
@@ -105,7 +119,10 @@ for N_cities in N_cities_list:
             data_obj.num_sweeps.append(num_sweeps)
             data_obj.trotter_size.append(trotter_size)
             data_obj.sample_no.append(0)
-            data_obj.objective.append(sa_objective[0])
+            data_obj.objective_mean.append(np.mean(sa_objective))
+            data_obj.objective_std.append(np.std(sa_objective))
+            data_obj.objective_min.append(np.min(sa_objective))
+            data_obj.objective_max.append(np.max(sa_objective))
             data_obj.sampling_time.append(sa_calc_time[0])
 
     for benchmark_device, num_sweeps, trotter_size in product(
@@ -119,25 +136,37 @@ for N_cities in N_cities_list:
         elif benchmark_device == "G3":
             queue_name = "testsolver3"
 
-        # SQA algorithm (using AWS Graviton 2 or 3)
-        # You need to specify JijZept credit toml file
-        sampler = JijSQASampler(config="config_prod.toml")
+        sampler = JijSQASampler(config="config.toml")
         response_orig: jm.SampleSet = sampler.sample_model(
             problem,
             instance_data,
             queue_name=queue_name,
+            #multipliers={
+            #    "one-city": 0,
+            #    "one-time": 0,
+            #},
             multipliers={
                 "one-city": sa_one_city_multiplier[N_cities],
                 "one-time": sa_one_city_multiplier[N_cities],
             },
             num_reads=num_reads,
             trotter=trotter_size,
+            num_sweeps=num_sweeps,
             beta=trotter_size,
         )
-        response = response_orig.feasible().lowest()
+        response = response_orig.feasible()
+        #pprint(response)
         assert len(response.evaluation.objective) != 0
+        pprint(f"feasibles={len(response.evaluation.objective)}")
+        #pprint(response.evaluation.objective)
         calc_time = response_orig.get_backend_calculation_time()
+        #pprint(calc_time)
+        # {'parameter_search': {'compile': 0.080865, 'iteration': {'0': {'get_qubo[0]': 0.126019, 'sample[0]': 0.775543, 'decode[0]': 0.228371, 'update[0]': 0.026416}}, 'reformat': 7.9e-05}}
         sqa_objective = list(response.evaluation.objective)
+        print(np.mean(sqa_objective))
+        print(np.std(sqa_objective))
+        print(np.min(sqa_objective))
+        print(np.max(sqa_objective))
         sqa_calc_time = [
             calc_time["parameter_search"]["iteration"]["0"]["sample[0]"] / num_reads
         ] * num_reads
@@ -147,7 +176,10 @@ for N_cities in N_cities_list:
         data_obj.num_sweeps.append(num_sweeps)
         data_obj.trotter_size.append(trotter_size)
         data_obj.sample_no.append(0)
-        data_obj.objective.append(sqa_objective[0])
+        data_obj.objective_mean.append(np.mean(sqa_objective))
+        data_obj.objective_std.append(np.std(sqa_objective))
+        data_obj.objective_min.append(np.min(sqa_objective))
+        data_obj.objective_max.append(np.max(sqa_objective))
         data_obj.sampling_time.append(sqa_calc_time[0])
 
 df = pd.DataFrame(data_obj.dict())
