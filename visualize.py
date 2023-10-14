@@ -1,17 +1,17 @@
-import time
-from jijzept import JijSASampler, JijSQASampler
-import jijzept as jz
-import jijmodeling as jm
 import logging
 import sys
+import time
+from itertools import product
+from pprint import pprint
+
+import jijmodeling as jm
+import jijzept as jz
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from itertools import product
+from jijzept import JijSASampler, JijSQASampler
 from pydantic import BaseModel
-from pprint import pprint
-import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib as mpl
 
 if __name__ == "__main__":
     df = pd.read_csv("result.csv")
@@ -52,5 +52,5 @@ if __name__ == "__main__":
     plt.xlabel("sampling time [s]")
     plt.ylabel("minimum cost function (traveling distance)")
 
-    #plt.show()
+    # plt.show()
     plt.savefig("result_benchmark.png")

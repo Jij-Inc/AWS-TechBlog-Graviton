@@ -1,31 +1,31 @@
-import time
-from jijzept import JijSASampler, JijSQASampler
-import jijzept as jz
-import jijmodeling as jm
 import logging
 import sys
-import numpy as np
-import pandas as pd
+import time
+from datetime import datetime
 from itertools import product
-from pydantic import BaseModel
 from pprint import pprint
 
-# create JijModeling object here
-problem = jm.Problem("test")
+import jijmodeling as jm
+import jijzept as jz
+import numpy as np
+import pandas as pd
+from jijzept import JijSASampler, JijSQASampler
+from pydantic import BaseModel
 
 # define variables
-d = jm.Placeholder("d", dim=2)
-N = d.shape[0].set_latex("N")
-i = jm.Element("i", (0, N))
-j = jm.Element("j", (0, N))
-t = jm.Element("t", (0, N))
-x = jm.Binary("x", shape=(N, N))
+d = jm.Placeholder("d", ndim=2)
+N = d.shape[0]
+N.set_latex("N")
+i = jm.Element("i", belong_to=(0, N))
+j = jm.Element("j", belong_to=(0, N))
+t = jm.Element("t", belong_to=(0, N))
+x = jm.BinaryVar("x", shape=(N, N))
 
 # set problem
-problem = jm.Problem("TSP")
-problem += jm.Sum([i, j], d[i, j] * jm.Sum(t, x[i, t] * x[j, (t + 1) % N]))
-problem += jm.Constraint("one-city", x[:, t] == 1, forall=t)
-problem += jm.Constraint("one-time", x[i, :] == 1, forall=i)
+problem = jm.Problem("Traveling Salesman Problem")
+problem += jm.sum([i, j], d[i, j] * jm.sum(t, x[i, t] * x[j, (t + 1) % N]))
+problem += jm.Constraint("one-city", jm.sum(i, x[i, t]) == 1, forall=t)
+problem += jm.Constraint("one-time", jm.sum(t, x[i, t]) == 1, forall=i)
 
 # generate 2d positions
 
@@ -37,7 +37,7 @@ sqa_one_city_multiplier = {20: 5, 40: 5}
 sqa_one_time_multiplier = {20: 5, 40: 5}
 
 N_cities_list = [40]
-trotter_sizes = [10, 20, 30, 40, 60]
+trotter_sizes = [10]
 num_sweepss_sa = [1000, 2000, 4000, 6000, 10000]
 num_sweepss = [100, 200, 400, 600, 1000]
 
@@ -68,7 +68,7 @@ data_obj = Data(
     sampling_time=[],
 )
 
-#np.random.seed(0x123456)
+# np.random.seed(0x123456)
 
 for N_cities in N_cities_list:
     pprint(f"N_cities: {N_cities}")
@@ -88,7 +88,7 @@ for N_cities in N_cities_list:
     for num_sweeps in num_sweepss_sa:
         pprint(f"num_sweeps: {num_sweeps}")
         # calculate SA
-        sampler = JijSASampler(config="config_prod.toml")
+        sampler = JijSASampler(config="config.toml")
         response_orig: jm.SampleSet = sampler.sample_model(
             problem,
             instance_data,
@@ -102,15 +102,17 @@ for N_cities in N_cities_list:
         response = response_orig.feasible()
         assert len(response.evaluation.objective) != 0
         pprint(f"feasibles={len(response.evaluation.objective)}")
-        calc_time = response_orig.get_backend_calculation_time()
         sa_objective = list(response.evaluation.objective)
         print(np.mean(sa_objective))
         print(np.std(sa_objective))
         print(np.min(sa_objective))
         print(np.max(sa_objective))
-        sa_calc_time = [
-            calc_time["parameter_search"]["iteration"]["0"]["sample[0]"] / num_reads
-        ] * num_reads
+        metadata = response_orig.metadata
+        date_format = "%Y-%m-%dT%H:%M:%S.%fZ"
+        start_time = datetime.strptime(metadata["sample[0]"]["start_time"], date_format)
+        end_time = datetime.strptime(metadata["sample[0]"]["end_time"], date_format)
+        calc_time = (end_time - start_time).total_seconds()
+        sa_calc_time = [calc_time / num_reads] * num_reads
 
         # write data
         for trotter_size in trotter_sizes:
@@ -141,10 +143,10 @@ for N_cities in N_cities_list:
             problem,
             instance_data,
             queue_name=queue_name,
-            #multipliers={
+            # multipliers={
             #    "one-city": 0,
             #    "one-time": 0,
-            #},
+            # },
             multipliers={
                 "one-city": sa_one_city_multiplier[N_cities],
                 "one-time": sa_one_city_multiplier[N_cities],
@@ -154,22 +156,28 @@ for N_cities in N_cities_list:
             num_sweeps=num_sweeps,
             beta=trotter_size,
         )
+        print(response_orig)
         response = response_orig.feasible()
-        #pprint(response)
+        # pprint(response)
         assert len(response.evaluation.objective) != 0
         pprint(f"feasibles={len(response.evaluation.objective)}")
-        #pprint(response.evaluation.objective)
-        calc_time = response_orig.get_backend_calculation_time()
-        #pprint(calc_time)
-        # {'parameter_search': {'compile': 0.080865, 'iteration': {'0': {'get_qubo[0]': 0.126019, 'sample[0]': 0.775543, 'decode[0]': 0.228371, 'update[0]': 0.026416}}, 'reformat': 7.9e-05}}
         sqa_objective = list(response.evaluation.objective)
         print(np.mean(sqa_objective))
         print(np.std(sqa_objective))
         print(np.min(sqa_objective))
         print(np.max(sqa_objective))
-        sqa_calc_time = [
-            calc_time["parameter_search"]["iteration"]["0"]["sample[0]"] / num_reads
-        ] * num_reads
+        metadata = response_orig.metadata
+        date_format = "%Y-%m-%dT%H:%M:%S.%fZ"
+        start_time = datetime.strptime(
+            metadata["parameter_search"]["iteration"]["0"]["sample[0]"]["start_time"],
+            date_format,
+        )
+        end_time = datetime.strptime(
+            metadata["parameter_search"]["iteration"]["0"]["sample[0]"]["end_time"],
+            date_format,
+        )
+        calc_time = (end_time - start_time).total_seconds()
+        sqa_calc_time = [calc_time / num_reads] * num_reads
 
         data_obj.N_cities.append(N_cities)
         data_obj.benchmark_device.append(benchmark_device)
