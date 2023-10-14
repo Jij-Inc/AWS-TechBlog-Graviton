@@ -25,5 +25,5 @@ token = "<Your JijZept API Key>"
 ```sh
 python visualize.py
 ```
-This script outputs png file for grpah.
+This script outputs png file for graph.
 
